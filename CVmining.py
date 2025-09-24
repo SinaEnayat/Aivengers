@@ -1,0 +1,217 @@
+import argparse
+import json
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+from typing import Dict, List
+
+# Local modules
+from resume_mining.extractor import extract_text_from_pdf
+from resume_mining.parser import parse_resume_text
+from resume_mining.scorer_rule import score_resume_against_job
+from resume_mining.scorer_ai import AIScorer
+from resume_mining.job_profile import create_job_profile_from_pdf
+from resume_mining.github_validate import extract_github_user, fetch_public_repos, compute_validation_bonus
+
+
+def _iter_pdfs(input_dir: Path) -> List[Path]:
+    return [p for p in input_dir.glob("**/*.pdf") if p.is_file()]
+
+
+def cmd_extract(args: argparse.Namespace) -> None:
+    input_dir = Path(args.input_dir)
+    output_jsonl = Path(args.output)
+    output_jsonl.parent.mkdir(parents=True, exist_ok=True)
+
+    pdf_paths = _iter_pdfs(input_dir)
+    if not pdf_paths:
+        print("No PDFs found.")
+        return
+
+    results: List[Dict] = []
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+        future_to_pdf = {executor.submit(extract_text_from_pdf, str(
+            pdf), args.ocr): pdf for pdf in pdf_paths}
+        for future in as_completed(future_to_pdf):
+            pdf_path = future_to_pdf[future]
+            try:
+                text = future.result()
+            except Exception as exc:
+                print(f"Error extracting {pdf_path}: {exc}")
+                text = ""
+            parsed = parse_resume_text(text, source_file=str(pdf_path))
+            results.append(parsed)
+
+    with output_jsonl.open("w", encoding="utf-8") as f:
+        for item in results:
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+    print(f"Wrote {len(results)} records to {output_jsonl}")
+
+
+def _load_jsonl(path: Path) -> List[Dict]:
+    items: List[Dict] = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            items.append(json.loads(line))
+    return items
+
+
+def _save_jsonl(items: List[Dict], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        for item in items:
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+
+def cmd_score_rule(args: argparse.Namespace) -> None:
+    resumes_path = Path(args.resumes)
+    job_spec_path = Path(args.job_spec)
+    output_path = Path(args.output)
+
+    resumes = _load_jsonl(resumes_path)
+    with job_spec_path.open("r", encoding="utf-8") as f:
+        job_spec = json.load(f)
+
+    scored = []
+    for r in resumes:
+        score_detail = score_resume_against_job(r, job_spec)
+        row = {**r, **score_detail}
+        scored.append(row)
+
+    scored.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+    _save_jsonl(scored, output_path)
+    print(
+        f"Scored {len(scored)} resumes. Top score: {scored[0].get('score', 0.0) if scored else 0}")
+
+
+def cmd_score_ai(args: argparse.Namespace) -> None:
+    resumes_path = Path(args.resumes)
+    job_spec_path = Path(args.job_spec)
+    output_path = Path(args.output)
+
+    resumes = _load_jsonl(resumes_path)
+    with job_spec_path.open("r", encoding="utf-8") as f:
+        job_spec = json.load(f)
+
+    ai = AIScorer(
+        provider=args.provider,
+        model=args.model,
+        api_base=os.getenv("AI_API_BASE"),
+        api_key=os.getenv("AI_API_KEY"),
+        batch_size=args.batch_size,
+        max_retries=3,
+    )
+    results = ai.score_resumes(resumes, job_spec)
+
+    # GitHub validation bonus
+    github_token = os.getenv("GITHUB_TOKEN")
+    for item in results:
+        links = item.get("links") or []
+        username = extract_github_user(links)
+        if not username:
+            continue
+        try:
+            repos = fetch_public_repos(username, github_token)
+            criteria = job_spec.get("criteria") or []
+            bonus = compute_validation_bonus(repos, criteria)
+            item["score"] = round(float(item.get("score", 0)) + bonus, 2)
+        except Exception as exc:
+            print(f"GitHub validation failed for {username}: {exc}")
+
+    results.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+    _save_jsonl(results, output_path)
+    print(
+        f"AI-scored {len(results)} resumes. Top score: {results[0].get('score', 0.0) if results else 0}")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Persian resume mining and scoring")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_extract = sub.add_parser(
+        "extract", help="Extract and parse PDFs into JSONL")
+    p_extract.add_argument("input_dir", help="Directory containing PDFs")
+    p_extract.add_argument(
+        "--output", default="out/resumes.jsonl", help="Output JSONL path")
+    p_extract.add_argument("--workers", type=int,
+                           default=4, help="Parallel workers")
+    p_extract.add_argument("--ocr", action="store_true",
+                           help="Enable OCR fallback for scanned PDFs")
+    p_extract.set_defaults(func=cmd_extract)
+
+    p_score = sub.add_parser(
+        "score", help="Rule-based scoring against a job spec JSON")
+    p_score.add_argument("resumes", help="Input JSONL from extract")
+    p_score.add_argument("job_spec", help="Job spec JSON path")
+    p_score.add_argument(
+        "--output", default="out/scored_rule.jsonl", help="Output JSONL path")
+    p_score.set_defaults(func=cmd_score_rule)
+
+    p_ai = sub.add_parser("score-ai", help="AI-based scoring with batching")
+    p_ai.add_argument("resumes", help="Input JSONL from extract")
+    p_ai.add_argument("job_spec", help="Job spec JSON path")
+    p_ai.add_argument("--output", default="out/scored_ai.jsonl",
+                      help="Output JSONL path")
+    p_ai.add_argument("--provider", default="openai",
+                      choices=["openai", "azure"], help="AI provider")
+    p_ai.add_argument("--model", default="gpt-4o-mini", help="Model name")
+    p_ai.add_argument("--batch-size", type=int, default=25,
+                      help="Number of resumes per request")
+    p_ai.set_defaults(func=cmd_score_ai)
+
+    # Create job profile from JD PDF (Gemini)
+    def cmd_job_profile(args: argparse.Namespace) -> None:
+        jd_pdf = Path(args.jd_pdf)
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        api_key = os.getenv("GEMINI_API_KEY")
+        profile = create_job_profile_from_pdf(
+            str(jd_pdf), api_key=api_key, model=args.model)
+        with output.open("w", encoding="utf-8") as f:
+            json.dump(profile, f, ensure_ascii=False, indent=2)
+        print(f"Wrote job profile to {output}")
+
+    p_jp = sub.add_parser(
+        "job-profile", help="Create job profile JSON from a Persian JD PDF using Gemini")
+    p_jp.add_argument("jd_pdf", help="Job description PDF path")
+    p_jp.add_argument("--model", default="gemini-1.5-pro",
+                      help="Gemini model name")
+    p_jp.add_argument("--output", default="out/job_profile.json",
+                      help="Output profile path")
+    p_jp.set_defaults(func=cmd_job_profile)
+
+    # Ranking to CSV
+    def cmd_rank(args: argparse.Namespace) -> None:
+        scored_path = Path(args.scored)
+        out_path = Path(args.output)
+        items = _load_jsonl(scored_path)
+        items.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with out_path.open("w", encoding="utf-8") as f:
+            for it in items:
+                name = it.get("source_file") or it.get("name") or "unknown"
+                f.write(f"{name},{it.get('score', 0)}\n")
+        print(f"Wrote ranking to {out_path}")
+
+    p_rank = sub.add_parser(
+        "rank", help="Produce ranked CSV from scored JSONL")
+    p_rank.add_argument("scored", help="Scored JSONL path")
+    p_rank.add_argument(
+        "--output", default="out/results.csv", help="Output CSV")
+    p_rank.set_defaults(func=cmd_rank)
+
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

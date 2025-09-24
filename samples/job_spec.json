@@ -1,0 +1,22 @@
+{
+    "title_keywords": [
+        "توسعه دهنده",
+        "مهندس نرم افزار"
+    ],
+    "required_skills": [
+        "Python",
+        "Django",
+        "PostgreSQL"
+    ],
+    "nice_to_have_skills": [
+        "Docker",
+        "Kubernetes"
+    ],
+    "min_years_experience": 3,
+    "weights": {
+        "title": 0.2,
+        "required": 0.5,
+        "nice": 0.2,
+        "experience": 0.1
+    }
+}
