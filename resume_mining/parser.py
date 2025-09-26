@@ -60,11 +60,11 @@ def parse_resume_text(text: str, source_file: str = "") -> Dict[str, Any]:
     elif exp_flag:
         experience = norm[exp_flag.start():].strip()
 
-        # links (URLs) extraction
-        links = []
-        for m in re.finditer(r"https?://[^\s)\]}]+", norm):
-            url = m.group(0).rstrip('،.؛')
-            links.append(url)
+    # links (URLs) extraction
+    links: List[str] = []
+    for m in re.finditer(r"https?://[^\s)\]}]+", norm):
+        url = m.group(0).rstrip('،.؛')
+        links.append(url)
 
     return {
         "source_file": source_file,
