@@ -65,7 +65,44 @@ class GeminiClient:
             raise
 
 
-def create_job_profile_from_pdf(pdf_path: str, api_key: str | None, model: str = "gemini-1.5-pro") -> Dict[str, Any]:
+class OpenAIClient:
+    def __init__(self, api_key: str | None = None, model: str = "GPT-5-c5zn8", api_base: str | None = None):
+        self.api_key = api_key
+        self.model = model
+        self.api_base = api_base
+
+    def generate_job_profile(self, jd_text: str) -> Dict[str, Any]:
+        from openai import OpenAI
+        client = OpenAI(api_key=self.api_key, base_url=self.api_base)
+        prompt = (
+            f"{PROMPT_FA}\n\nمتن شرح شغل:\n{jd_text}"
+        )
+        resp = client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+        )
+        content = (resp.choices[0].message.content or "{}").strip()
+        try:
+            return json.loads(content)
+        except Exception:
+            start = content.find("{")
+            end = content.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                return json.loads(content[start: end + 1])
+            raise
+
+
+def create_job_profile_from_pdf(
+    pdf_path: str,
+    api_key: str | None,
+    model: str = "GPT-5-c5zn8",
+    provider: str = "openai",
+    api_base: str | None = None,
+) -> Dict[str, Any]:
     jd_text = _read_pdf_text(pdf_path)
-    client = GeminiClient(api_key=api_key, model=model)
+    if provider == "openai":
+        client = OpenAIClient(api_key=api_key, model=model, api_base=api_base)
+    else:
+        client = GeminiClient(api_key=api_key, model=model)
     return client.generate_job_profile(jd_text)

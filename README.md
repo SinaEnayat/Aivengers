@@ -6,7 +6,7 @@
 - Parse fields: name, title, phone, email, skills, education, experience
 - Rule-based scoring vs job spec
 - AI scoring with batching (OpenAI) to avoid giant single prompts
-- Job profile creator from Persian JD PDF using Gemini
+- Job profile creator from Persian JD PDF using Gemini or OpenAI
 - GitHub validation bonus using public repos
 - Ranking to CSV
 
@@ -26,6 +26,12 @@ Create job profile from a Persian JD PDF (Gemini):
 ```bash
 $env:GEMINI_API_KEY="your_key"
 python CVmining.py job-profile E:\jd.pdf --output out/job_profile.json
+```
+
+Create job profile from a Persian JD PDF (OpenAI):
+```bash
+$env:AI_API_KEY="sk-..."  # optional: $env:AI_API_BASE for custom endpoints
+python CVmining.py job-profile E:\jd.pdf --provider openai --model gpt-4o-mini --output out/job_profile.json
 ```
 
 Extract resumes from PDFs:
@@ -48,6 +54,12 @@ python CVmining.py score-ai out/resumes.jsonl job_spec.json --output out/scored_
 Produce ranked CSV:
 ```bash
 python CVmining.py rank out/scored_ai.jsonl --output out/results.csv
+```
+
+AI-enrich parsed resumes to normalized schema (OpenAI):
+```bash
+$env:AI_API_KEY="sk-..."  # optional: $env:AI_API_BASE
+python CVmining.py enrich-ai out/resumes.jsonl --provider openai --model gpt-4o-mini --output out/resumes_enriched.jsonl --batch-size 20
 ```
 
 ### Job Spec JSON example

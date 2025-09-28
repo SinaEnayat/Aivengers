@@ -10,6 +10,7 @@ from resume_mining.extractor import extract_text_from_pdf
 from resume_mining.parser import parse_resume_text
 from resume_mining.scorer_rule import score_resume_against_job
 from resume_mining.scorer_ai import AIScorer
+from resume_mining.enricher_ai import AIEnricher
 from resume_mining.job_profile import create_job_profile_from_pdf
 from resume_mining.github_validate import extract_github_user, fetch_public_repos, compute_validation_bonus
 
@@ -158,31 +159,68 @@ def build_parser() -> argparse.ArgumentParser:
                       help="Output JSONL path")
     p_ai.add_argument("--provider", default="openai",
                       choices=["openai", "azure"], help="AI provider")
-    p_ai.add_argument("--model", default="gpt-4o-mini", help="Model name")
+    p_ai.add_argument("--model", default="GPT-5-c5zn8", help="Model name")
     p_ai.add_argument("--batch-size", type=int, default=25,
                       help="Number of resumes per request")
     p_ai.set_defaults(func=cmd_score_ai)
 
-    # Create job profile from JD PDF (Gemini)
+    # Create job profile from JD PDF (Gemini/OpenAI)
     def cmd_job_profile(args: argparse.Namespace) -> None:
         jd_pdf = Path(args.jd_pdf)
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
-        api_key = os.getenv("GEMINI_API_KEY")
+        if args.provider == "openai":
+            api_key = os.getenv("AI_API_KEY")
+            api_base = os.getenv("AI_API_BASE")
+        else:
+            api_key = os.getenv("GEMINI_API_KEY")
+            api_base = None
         profile = create_job_profile_from_pdf(
-            str(jd_pdf), api_key=api_key, model=args.model)
+            str(jd_pdf), api_key=api_key, model=args.model, provider=args.provider, api_base=api_base)
         with output.open("w", encoding="utf-8") as f:
             json.dump(profile, f, ensure_ascii=False, indent=2)
         print(f"Wrote job profile to {output}")
 
     p_jp = sub.add_parser(
-        "job-profile", help="Create job profile JSON from a Persian JD PDF using Gemini")
+        "job-profile", help="Create job profile JSON from a Persian JD PDF using Gemini or OpenAI")
     p_jp.add_argument("jd_pdf", help="Job description PDF path")
-    p_jp.add_argument("--model", default="gemini-1.5-pro",
-                      help="Gemini model name")
+    p_jp.add_argument("--provider", default="openai",
+                      choices=["gemini", "openai"], help="LLM provider")
+    p_jp.add_argument("--model", default="GPT-5-c5zn8",
+                      help="Model name (GPT-5-c5zn8 or gemini-1.5-pro)")
     p_jp.add_argument("--output", default="out/job_profile.json",
                       help="Output profile path")
     p_jp.set_defaults(func=cmd_job_profile)
+
+    # Enrich resumes JSONL via AI to standardize fields
+    def cmd_enrich_ai(args: argparse.Namespace) -> None:
+        input_path = Path(args.input)
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        resumes = _load_jsonl(input_path)
+        enricher = AIEnricher(
+            provider=args.provider,
+            model=args.model,
+            api_base=os.getenv("AI_API_BASE"),
+            api_key=os.getenv("AI_API_KEY"),
+            batch_size=args.batch_size,
+            max_retries=3,
+        )
+        enriched = enricher.enrich(resumes)
+        _save_jsonl(enriched, output_path)
+        print(f"AI-enriched {len(enriched)} resumes -> {output_path}")
+
+    p_enrich = sub.add_parser(
+        "enrich-ai", help="AI-enrich parsed resumes JSONL to normalized schema")
+    p_enrich.add_argument("input", help="Input resumes JSONL (from extract)")
+    p_enrich.add_argument(
+        "--output", default="out/resumes_enriched.jsonl", help="Output JSONL path")
+    p_enrich.add_argument("--provider", default="openai",
+                          choices=["openai"], help="AI provider")
+    p_enrich.add_argument("--model", default="GPT-5-c5zn8", help="Model name")
+    p_enrich.add_argument("--batch-size", type=int,
+                          default=20, help="Items per request")
+    p_enrich.set_defaults(func=cmd_enrich_ai)
 
     # Ranking to CSV
     def cmd_rank(args: argparse.Namespace) -> None:
