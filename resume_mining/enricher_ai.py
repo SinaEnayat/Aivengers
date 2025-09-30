@@ -13,7 +13,7 @@ class AIEnricher:
             model: str,
             api_base: str | None,
             api_key: str | None,
-            batch_size: int = 20,
+            batch_size: int = 5,
             max_retries: int = 3,
     ):
         self.provider = provider
@@ -43,6 +43,7 @@ class AIEnricher:
             "قوانین: \n"
             "- اگر مقدار فعلی قابل قبول است همان را حفظ کنید.\n"
             "- مهارت‌ها را به لیست استانداردی از توکن‌ها تبدیل کنید (بدون تکرار).\n"
+            "اگر اطلاعات الکی و بدون کاربرد در رزومه بود انها را حذف کرده و در خروجی قرار نده ، صرفا اطلاعاتی که برای استاندارد سازی لازم هست را قرار دهید."
             "- عنوان شغلی را به یک عبارت کوتاه و متداول تبدیل کنید.\n"
             "- خروجی فقط JSON آرایه باشد، بدون متن اضافی.\n"
             f"Resumes: {json.dumps(resumes, ensure_ascii=False)}\n"
@@ -130,9 +131,18 @@ class AIEnricher:
                             merged = {**index[src], **item}
                             results.append(merged)
                     break
-                except Exception:
+                except Exception as e:
                     attempt += 1
+                    print(
+                        f"Attempt {attempt} failed: {type(e).__name__}: {str(e)[:200]}...")
                     if attempt > self.max_retries:
-                        raise
-                    time.sleep(1.5 * attempt)
+                        print(
+                            f"Max retries ({self.max_retries}) exceeded. Skipping batch.")
+                        # Add original resumes to results if AI fails
+                        for r in batch:
+                            results.append(r)
+                        break
+                    wait_time = 30 * attempt  # Exponential backoff: 30s, 60s, 90s
+                    print(f"Waiting {wait_time} seconds before retry...")
+                    time.sleep(wait_time)
         return results

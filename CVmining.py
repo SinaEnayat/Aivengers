@@ -40,7 +40,9 @@ def cmd_extract(args: argparse.Namespace) -> None:
             except Exception as exc:
                 print(f"Error extracting {pdf_path}: {exc}")
                 text = ""
-            parsed = parse_resume_text(text, source_file=str(pdf_path))
+            # Store only the filename to reduce prompt tokens
+            parsed = parse_resume_text(
+                text, source_file=os.path.basename(str(pdf_path)))
             results.append(parsed)
 
     with output_jsonl.open("w", encoding="utf-8") as f:
@@ -105,27 +107,66 @@ def cmd_score_ai(args: argparse.Namespace) -> None:
         batch_size=args.batch_size,
         max_retries=3,
     )
-    results = ai.score_resumes(resumes, job_spec)
+    if getattr(args, "stream", False):
+        # truncate output and append incrementally per batch
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("w", encoding="utf-8") as _:
+            pass
+        total = len(resumes)
+        done = 0
+        for i in range(0, total, args.batch_size):
+            batch = resumes[i: i + args.batch_size]
+            try:
+                batch_results = ai.score_resumes(batch, job_spec)
+            except Exception as exc:
+                print(
+                    f"Scoring failed for batch {i // args.batch_size + 1}: {exc}")
+                batch_results = []
 
-    # GitHub validation bonus
-    github_token = os.getenv("GITHUB_TOKEN")
-    for item in results:
-        links = item.get("links") or []
-        username = extract_github_user(links)
-        if not username:
-            continue
-        try:
-            repos = fetch_public_repos(username, github_token)
-            criteria = job_spec.get("criteria") or []
-            bonus = compute_validation_bonus(repos, criteria)
-            item["score"] = round(float(item.get("score", 0)) + bonus, 2)
-        except Exception as exc:
-            print(f"GitHub validation failed for {username}: {exc}")
+            # GitHub validation bonus on batch
+            github_token = os.getenv("GITHUB_TOKEN")
+            for item in batch_results:
+                links = item.get("links") or []
+                username = extract_github_user(links)
+                if not username:
+                    continue
+                try:
+                    repos = fetch_public_repos(username, github_token)
+                    criteria = job_spec.get("criteria") or []
+                    bonus = compute_validation_bonus(repos, criteria)
+                    item["score"] = round(
+                        float(item.get("score", 0)) + bonus, 2)
+                except Exception as exc:
+                    print(f"GitHub validation failed for {username}: {exc}")
 
-    results.sort(key=lambda x: x.get("score", 0.0), reverse=True)
-    _save_jsonl(results, output_path)
-    print(
-        f"AI-scored {len(results)} resumes. Top score: {results[0].get('score', 0.0) if results else 0}")
+            # append results incrementally
+            with output_path.open("a", encoding="utf-8") as f:
+                for it in batch_results:
+                    f.write(json.dumps(it, ensure_ascii=False) + "\n")
+                    done += 1
+            print(f"AI-scored {done}/{total} resumes -> {output_path}")
+    else:
+        results = ai.score_resumes(resumes, job_spec)
+
+        # GitHub validation bonus
+        github_token = os.getenv("GITHUB_TOKEN")
+        for item in results:
+            links = item.get("links") or []
+            username = extract_github_user(links)
+            if not username:
+                continue
+            try:
+                repos = fetch_public_repos(username, github_token)
+                criteria = job_spec.get("criteria") or []
+                bonus = compute_validation_bonus(repos, criteria)
+                item["score"] = round(float(item.get("score", 0)) + bonus, 2)
+            except Exception as exc:
+                print(f"GitHub validation failed for {username}: {exc}")
+
+        results.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+        _save_jsonl(results, output_path)
+        print(
+            f"AI-scored {len(results)} resumes. Top score: {results[0].get('score', 0.0) if results else 0}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -162,6 +203,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_ai.add_argument("--model", default="GPT-5-c5zn8", help="Model name")
     p_ai.add_argument("--batch-size", type=int, default=25,
                       help="Number of resumes per request")
+    p_ai.add_argument("--stream", action="store_true",
+                      help="Process incrementally and append results per batch (use with --batch-size 1 for per-line)")
     p_ai.set_defaults(func=cmd_score_ai)
 
     # Create job profile from JD PDF (Gemini/OpenAI)
@@ -206,9 +249,30 @@ def build_parser() -> argparse.ArgumentParser:
             batch_size=args.batch_size,
             max_retries=3,
         )
-        enriched = enricher.enrich(resumes)
-        _save_jsonl(enriched, output_path)
-        print(f"AI-enriched {len(enriched)} resumes -> {output_path}")
+
+        if getattr(args, "stream", False):
+            # Truncate output then append incrementally per batch
+            with output_path.open("w", encoding="utf-8") as _:
+                pass
+            total = len(resumes)
+            done = 0
+            for i in range(0, total, args.batch_size):
+                batch = resumes[i: i + args.batch_size]
+                try:
+                    enriched_batch = enricher.enrich(batch)
+                except Exception as exc:
+                    print(
+                        f"Enrichment failed for batch {i // args.batch_size + 1}: {exc}")
+                    enriched_batch = batch  # fall back to original
+                with output_path.open("a", encoding="utf-8") as f:
+                    for item in enriched_batch:
+                        f.write(json.dumps(item, ensure_ascii=False) + "\n")
+                        done += 1
+                print(f"AI-enriched {done}/{total} resumes -> {output_path}")
+        else:
+            enriched = enricher.enrich(resumes)
+            _save_jsonl(enriched, output_path)
+            print(f"AI-enriched {len(enriched)} resumes -> {output_path}")
 
     p_enrich = sub.add_parser(
         "enrich-ai", help="AI-enrich parsed resumes JSONL to normalized schema")
@@ -220,6 +284,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_enrich.add_argument("--model", default="GPT-5-c5zn8", help="Model name")
     p_enrich.add_argument("--batch-size", type=int,
                           default=20, help="Items per request")
+    p_enrich.add_argument("--stream", action="store_true",
+                          help="Process incrementally and append results per batch (use with --batch-size 1 for per-line)")
     p_enrich.set_defaults(func=cmd_enrich_ai)
 
     # Ranking to CSV
