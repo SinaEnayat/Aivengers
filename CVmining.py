@@ -5,6 +5,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List
 
+import fitz  # PyMuPDF
+
 # Local modules
 from resume_mining.extractor import extract_text_from_pdf
 from resume_mining.parser import parse_resume_text
@@ -15,8 +17,49 @@ from resume_mining.job_profile import create_job_profile_from_pdf
 from resume_mining.github_validate import extract_github_user, fetch_public_repos, compute_validation_bonus
 
 
-def _iter_pdfs(input_dir: Path) -> List[Path]:
-    return [p for p in input_dir.glob("**/*.pdf") if p.is_file()]
+def _count_pdf_pages(pdf_path: Path) -> int:
+    """Count the number of pages in a PDF file.
+
+    Args:
+        pdf_path: Path to the PDF file
+
+    Returns:
+        Number of pages in the PDF, or 0 if there's an error
+    """
+    try:
+        with fitz.open(str(pdf_path)) as doc:
+            return len(doc)
+    except Exception:
+        return 0
+
+
+def _iter_pdfs(input_dir: Path, max_pages: int = None) -> List[Path]:
+    """Get all PDF files in the input directory, optionally filtered by page count.
+
+    Args:
+        input_dir: Directory to search for PDFs
+        max_pages: Maximum number of pages allowed (None for no limit)
+
+    Returns:
+        List of PDF file paths that meet the criteria
+    """
+    all_pdfs = [p for p in input_dir.glob("**/*.pdf") if p.is_file()]
+
+    if max_pages is None:
+        return all_pdfs
+
+    filtered_pdfs = []
+    for pdf_path in all_pdfs:
+        page_count = _count_pdf_pages(pdf_path)
+        if page_count > 0 and page_count <= max_pages:
+            filtered_pdfs.append(pdf_path)
+        elif page_count > max_pages:
+            print(
+                f"Skipping {pdf_path.name}: {page_count} pages (exceeds limit of {max_pages})")
+        else:
+            print(f"Skipping {pdf_path.name}: Could not read page count")
+
+    return filtered_pdfs
 
 
 def cmd_extract(args: argparse.Namespace) -> None:
@@ -24,9 +67,9 @@ def cmd_extract(args: argparse.Namespace) -> None:
     output_jsonl = Path(args.output)
     output_jsonl.parent.mkdir(parents=True, exist_ok=True)
 
-    pdf_paths = _iter_pdfs(input_dir)
+    pdf_paths = _iter_pdfs(input_dir, max_pages=args.max_pages)
     if not pdf_paths:
-        print("No PDFs found.")
+        print("No PDFs found that meet the criteria.")
         return
 
     results: List[Dict] = []
@@ -183,6 +226,8 @@ def build_parser() -> argparse.ArgumentParser:
                            default=4, help="Parallel workers")
     p_extract.add_argument("--ocr", action="store_true",
                            help="Enable OCR fallback for scanned PDFs")
+    p_extract.add_argument("--max-pages", type=int, default=2,
+                           help="Maximum number of pages allowed in PDFs (default: 2)")
     p_extract.set_defaults(func=cmd_extract)
 
     p_score = sub.add_parser(
