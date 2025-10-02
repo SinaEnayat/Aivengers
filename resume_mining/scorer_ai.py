@@ -27,7 +27,11 @@ class AIScorer:
         return (
             "You are an HR assistant fluent in Persian. Score each resume 0-100 based on weighted criteria.\n"
             "Criteria is provided as job_profile.criteria with priority and weight.\n"
+            "For each resume, provide structured reasoning with these exact sections:\n"
+            "1. دلایل گرفتن امتیاز: (Reasons for getting points)\n"
+            "2. دلایل نگرفتن امتیاز: (Reasons for not getting points)\n"
             "Return strict JSON list: [{source_file, score, reasoning}].\n"
+            "The reasoning field should contain the structured analysis with the two sections above.\n"
             f"Job Spec: {json.dumps(job, ensure_ascii=False)}\n"
             f"Resumes: {json.dumps(resumes, ensure_ascii=False)}\n"
         )

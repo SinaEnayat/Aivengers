@@ -20,6 +20,13 @@ class AIvengersApp:
         self.root.geometry("1200x800")
         self.root.configure(bg='#1a1a1a')
 
+        # Configure root window to be responsive
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+
+        # Set minimum window size
+        self.root.minsize(800, 600)
+
         # Create main canvas and scrollbar for the entire app
         self.main_canvas = tk.Canvas(
             self.root, bg='#1a1a1a', highlightthickness=0)
@@ -37,20 +44,23 @@ class AIvengersApp:
             (0, 0), window=self.scrollable_frame, anchor="nw")
         self.main_canvas.configure(yscrollcommand=self.main_scrollbar.set)
 
-        # Pack main canvas and scrollbar
-        self.main_canvas.pack(side="left", fill="both", expand=True)
-        self.main_scrollbar.pack(side="right", fill="y")
+        # Use grid for responsive layout
+        self.main_canvas.grid(row=0, column=0, sticky="nsew")
+        self.main_scrollbar.grid(row=0, column=1, sticky="ns")
 
         # Bind mousewheel to canvas
         self.main_canvas.bind("<MouseWheel>", self._on_mousewheel)
 
+        # Bind window resize events for responsive behavior
+        self.root.bind('<Configure>', self._on_window_resize)
+
         # Colors
         self.bg_color = '#1a1a1a'
-        self.green_color = '#00ff00'
+        self.green_color = '#1BB8C9'  # Cyan color
         self.white_color = '#ffffff'
         self.yellow_color = '#ffff00'
-        self.red_color = '#ff0000'
-        self.hover_green = '#33ff33'
+        self.red_color = '#A31D1D'  # Red color
+        self.hover_green = '#4CC8D9'  # Lighter cyan for hover
 
         # State variables
         self.resume_folder_path = ""
@@ -138,16 +148,103 @@ class AIvengersApp:
         self.create_process_steps()
         self.create_results_display()
 
+        # Window icon removed as requested
+
         # Start queue processor
         self.process_queue_events()
 
     def _on_mousewheel(self, event):
         self.main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
+    def _on_window_resize(self, event):
+        """Handle window resize events for responsive behavior"""
+        if event.widget == self.root:
+            # Update canvas scroll region
+            self.main_canvas.configure(
+                scrollregion=self.main_canvas.bbox("all"))
+
+            # Update table column widths based on window size
+            if hasattr(self, 'results_tree'):
+                window_width = self.root.winfo_width()
+                if window_width > 0:
+                    # Calculate responsive column widths
+                    name_width = max(200, int(window_width * 0.6))
+                    score_width = max(80, int(window_width * 0.15))
+                    details_width = max(80, int(window_width * 0.15))
+
+                    self.results_tree.column('Name', width=name_width)
+                    self.results_tree.column('Score', width=score_width)
+                    self.results_tree.column('Details', width=details_width)
+
+            # Update font sizes based on window size for better readability
+            window_height = self.root.winfo_height()
+            if window_height > 0:
+                # Calculate responsive font sizes
+                base_font_size = max(10, min(16, int(window_height / 50)))
+                title_font_size = max(24, min(48, int(window_height / 20)))
+
+                # Update title fonts if they exist
+                if hasattr(self, 'ai_label') and hasattr(self, 'vengers_label'):
+                    self.ai_label.configure(
+                        font=("Arial", title_font_size, "bold"))
+                    self.vengers_label.configure(
+                        font=("Arial", title_font_size, "bold"))
+
+                # Update subtitle font if it exists
+                if hasattr(self, 'tagline1'):
+                    subtitle_font_size = max(
+                        14, min(24, int(window_height / 35)))
+                    self.tagline1.configure(font=("Arial", subtitle_font_size))
+
+                # Update results title font if it exists
+                if hasattr(self, 'results_title'):
+                    results_font_size = max(
+                        14, min(20, int(window_height / 45)))
+                    self.results_title.configure(
+                        font=("Arial", results_font_size, "bold"))
+
+                # Update step card fonts
+                self._update_step_card_fonts(base_font_size)
+
+    def _update_step_card_fonts(self, base_font_size):
+        """Update step card fonts responsively"""
+        # Calculate responsive font sizes for step cards
+        title_font_size = max(12, min(18, int(base_font_size * 1.2)))
+        desc_font_size = max(8, min(12, int(base_font_size * 0.8)))
+        btn_font_size = max(8, min(12, int(base_font_size * 0.9)))
+
+        # Update all step cards
+        step_cards = [
+            ('extract_card', 'extract'),
+            ('job_desc_card', 'job_description'),
+            ('enrich_card', 'enrich'),
+            ('score_card', 'score'),
+            ('rank_card', 'rank')
+        ]
+
+        for card_attr, card_type in step_cards:
+            if hasattr(self, card_attr):
+                card = getattr(self, card_attr)
+                if hasattr(card, 'title_label'):
+                    card.title_label.configure(
+                        font=("Arial", title_font_size, "bold"))
+                if hasattr(card, 'desc_label'):
+                    card.desc_label.configure(font=("Arial", desc_font_size))
+                if hasattr(card, 'file_btn'):
+                    card.file_btn.configure(font=("Arial", btn_font_size))
+                if hasattr(card, 'start_btn'):
+                    card.start_btn.configure(
+                        font=("Arial", btn_font_size, "bold"))
+                if hasattr(card, 'path_label'):
+                    card.path_label.configure(
+                        font=("Arial", max(7, min(10, int(base_font_size * 0.7)))))
+
     def create_header(self):
-        # Main title frame
+        # Main title frame - responsive
         title_frame = tk.Frame(self.scrollable_frame, bg=self.bg_color)
-        title_frame.pack(pady=30)
+        title_frame.pack(fill='x', pady=30, padx=20)
+
+        # Logo/icon removed as requested
 
         # AIvengers title with different colors for AI and vengers
         title_frame_inner = tk.Frame(title_frame, bg=self.bg_color)
@@ -276,7 +373,13 @@ class AIvengersApp:
 
         # Update description
         if hasattr(card, 'desc_label'):
-            card.desc_label.configure(text=t[f"{card_type}_desc"])
+            # Handle special case for job_description
+            desc_key = f"{card_type}_desc"
+            if desc_key not in t:
+                # Try alternative naming
+                if card_type == "job_description":
+                    desc_key = "job_desc_desc"
+            card.desc_label.configure(text=t[desc_key])
 
         # Update button text
         if hasattr(card, 'start_btn'):
@@ -295,13 +398,26 @@ class AIvengersApp:
                 card.path_label.configure(text=t["no_file_selected"])
 
     def create_process_steps(self):
-        # Process steps frame
+        # Process steps frame - responsive
         steps_frame = tk.Frame(self.scrollable_frame, bg=self.bg_color)
-        steps_frame.pack(pady=40, padx=20)
+        steps_frame.pack(fill='x', pady=40, padx=20)
 
-        # First row
+        # Configure grid weights for responsive layout
+        steps_frame.grid_rowconfigure(0, weight=1)
+        steps_frame.grid_rowconfigure(1, weight=1)
+        steps_frame.grid_columnconfigure(0, weight=1)
+        steps_frame.grid_columnconfigure(1, weight=1)
+        steps_frame.grid_columnconfigure(2, weight=1)
+        steps_frame.grid_columnconfigure(3, weight=1)
+
+        # First row - responsive grid
         first_row = tk.Frame(steps_frame, bg=self.bg_color)
-        first_row.pack()
+        first_row.grid(row=0, column=0, columnspan=4,
+                       sticky="ew", padx=5, pady=5)
+        first_row.grid_columnconfigure(0, weight=1)
+        first_row.grid_columnconfigure(1, weight=1)
+        first_row.grid_columnconfigure(2, weight=1)
+        first_row.grid_columnconfigure(3, weight=1)
 
         # Extract step
         self.extract_card = self.create_step_card(
@@ -327,9 +443,11 @@ class AIvengersApp:
             "🎯", self.on_score_click, 3
         )
 
-        # Second row - Rank (full width)
+        # Second row - Rank (full width) - responsive
         second_row = tk.Frame(steps_frame, bg=self.bg_color)
-        second_row.pack(pady=(20, 0))
+        second_row.grid(row=1, column=0, columnspan=4,
+                        sticky="ew", padx=5, pady=5)
+        second_row.grid_columnconfigure(0, weight=1)
 
         self.rank_card = self.create_step_card(
             second_row, "rank", "rank_desc",
@@ -337,7 +455,7 @@ class AIvengersApp:
         )
 
     def create_step_card(self, parent, title_key, desc_key, icon, command, step_num, full_width=False):
-        # Card frame
+        # Card frame - responsive
         card_frame = tk.Frame(
             parent,
             bg=self.bg_color,
@@ -348,10 +466,12 @@ class AIvengersApp:
         )
 
         if full_width:
-            card_frame.pack(fill='x', padx=10, pady=5)
+            card_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=5)
+            parent.grid_columnconfigure(0, weight=1)
         else:
-            card_frame.pack(side='left', padx=10, pady=5,
-                            fill='both', expand=True)
+            card_frame.grid(row=0, column=step_num,
+                            sticky="nsew", padx=10, pady=5)
+            parent.grid_columnconfigure(step_num, weight=1)
 
         # Icon
         icon_label = tk.Label(
@@ -374,14 +494,15 @@ class AIvengersApp:
         title_label.pack()
         card_frame.title_label = title_label  # Store reference
 
-        # Description
+        # Description - responsive
         desc_label = tk.Label(
             card_frame,
             text=self.translations[self.current_language][desc_key],
             font=("Arial", 10),
             bg=self.bg_color,
             fg=self.white_color,
-            wraplength=200
+            wraplength=220,
+            justify='center'
         )
         desc_label.pack(pady=(5, 10), padx=10)
         card_frame.desc_label = desc_label  # Store reference
@@ -505,9 +626,13 @@ class AIvengersApp:
                     text=f"Selected: {os.path.basename(file_path)}")
 
     def create_results_display(self):
-        # Results frame
+        # Results frame - responsive
         results_frame = tk.Frame(self.scrollable_frame, bg=self.bg_color)
         results_frame.pack(fill='both', expand=True, padx=20, pady=20)
+
+        # Configure grid weights for responsive layout
+        results_frame.grid_rowconfigure(1, weight=1)
+        results_frame.grid_columnconfigure(0, weight=1)
 
         # Results title
         results_title = tk.Label(
@@ -517,20 +642,24 @@ class AIvengersApp:
             bg=self.bg_color,
             fg=self.green_color
         )
-        results_title.pack(anchor='w')
+        results_title.grid(row=0, column=0, sticky="w", pady=(0, 10))
         self.results_title = results_title  # Store reference
 
-        # Create table frame with green border
+        # Create table frame with green border - responsive
         table_container = tk.Frame(
             results_frame, bg=self.green_color, relief='solid', bd=2)
-        table_container.pack(pady=(10, 0), padx=20, fill='x')
+        table_container.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
+        table_container.grid_columnconfigure(0, weight=1)
+        table_container.grid_rowconfigure(0, weight=1)
 
         # Create table constraint frame
         table_constraint = tk.Frame(
             table_container, bg='#2a2a2a', relief='flat', bd=0)
-        table_constraint.pack(expand=True, fill='both', padx=2, pady=2)
+        table_constraint.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
+        table_constraint.grid_columnconfigure(0, weight=1)
+        table_constraint.grid_rowconfigure(0, weight=1)
 
-        # Create Treeview for table
+        # Create Treeview for table - responsive
         columns = ('Name', 'Score', 'Details')
         self.results_tree = ttk.Treeview(
             table_constraint, columns=columns, show='headings', height=15)
@@ -543,9 +672,12 @@ class AIvengersApp:
         self.results_tree.heading(
             'Details', text=self.translations[self.current_language]["details"])
 
-        self.results_tree.column('Name', width=400, anchor='w')
-        self.results_tree.column('Score', width=120, anchor='center')
-        self.results_tree.column('Details', width=100, anchor='center')
+        # Responsive column widths (percentage-based)
+        self.results_tree.column('Name', width=400, anchor='w', minwidth=200)
+        self.results_tree.column(
+            'Score', width=120, anchor='center', minwidth=80)
+        self.results_tree.column('Details', width=100,
+                                 anchor='center', minwidth=80)
 
         # Custom dark theme styling
         style = ttk.Style()
@@ -576,9 +708,9 @@ class AIvengersApp:
             table_constraint, orient='vertical', command=self.results_tree.yview)
         self.results_tree.configure(yscrollcommand=scrollbar.set)
 
-        # Pack treeview and scrollbar
-        self.results_tree.pack(side='left', fill='both', expand=True)
-        scrollbar.pack(side='right', fill='y')
+        # Grid treeview and scrollbar - responsive
+        self.results_tree.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
 
         # Add click handler for details
         self.results_tree.bind("<Button-1>", self.on_table_click)
@@ -620,18 +752,30 @@ class AIvengersApp:
         return ai_reasons
 
     def show_ai_reason_popup(self, resume_name):
-        """Show AI reason in a popup window"""
+        """Show AI reason in a structured popup window"""
         # Load AI reasons
         ai_reasons = self.load_ai_reasons()
 
-        # Find matching AI reason
-        ai_reason = ai_reasons.get(
-            resume_name, "AI reason not found for this resume.")
+        # Find matching AI reason with fallback
+        ai_reason = ai_reasons.get(resume_name, None)
+
+        # If not found, try with .pdf extension
+        if not ai_reason and not resume_name.endswith('.pdf'):
+            ai_reason = ai_reasons.get(resume_name + '.pdf', None)
+
+        # If still not found, try without .pdf extension
+        if not ai_reason and resume_name.endswith('.pdf'):
+            ai_reason = ai_reasons.get(resume_name.replace('.pdf', ''), None)
+
+        # Final fallback
+        if not ai_reason:
+            ai_reason = f"AI reason not found for resume: {resume_name}\n\nAvailable resumes:\n" + "\n".join(
+                list(ai_reasons.keys())[:10])
 
         # Create popup window
         popup = tk.Toplevel(self.root)
         popup.title(f"AI Analysis - {resume_name}")
-        popup.geometry("800x600")
+        popup.geometry("900x700")
         popup.configure(bg=self.bg_color)
 
         # Center the popup
@@ -642,45 +786,45 @@ class AIvengersApp:
         title_label = tk.Label(
             popup,
             text=f"AI Analysis for {resume_name}",
-            font=("Arial", 16, "bold"),
+            font=("Arial", 18, "bold"),
             bg=self.bg_color,
             fg=self.green_color
         )
         title_label.pack(pady=20)
 
-        # AI reason text with scrollbar
-        text_frame = tk.Frame(popup, bg=self.bg_color)
-        text_frame.pack(fill='both', expand=True, padx=20, pady=10)
+        # Create structured content frame
+        content_frame = tk.Frame(popup, bg=self.bg_color)
+        content_frame.pack(fill='both', expand=True, padx=20, pady=10)
 
-        text_widget = tk.Text(
-            text_frame,
-            wrap='word',
-            font=("Tahoma", 12),  # Better Persian font support
-            bg='#2a2a2a',
-            fg='white',
-            insertbackground='white',
-            selectbackground=self.green_color,
-            selectforeground='white',
-            padx=15,
-            pady=15
+        # Parse and structure the AI reason
+        structured_content = self.parse_ai_reason(ai_reason)
+
+        # Create scrollable frame
+        canvas = tk.Canvas(content_frame, bg=self.bg_color,
+                           highlightthickness=0)
+        scrollbar = tk.Scrollbar(
+            content_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.bg_color)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
 
-        scrollbar = tk.Scrollbar(
-            text_frame, orient='vertical', command=text_widget.yview)
-        text_widget.configure(yscrollcommand=scrollbar.set)
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
 
-        # Insert AI reason text
-        text_widget.insert('1.0', ai_reason)
+        # Display structured content
+        self.display_structured_analysis(scrollable_frame, structured_content)
 
-        # Configure for RTL text (Persian)
-        text_widget.tag_configure("rtl", justify='right')
-        text_widget.tag_add("rtl", "1.0", "end")
+        # Pack canvas and scrollbar
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
-        text_widget.config(state='disabled')  # Make read-only
-
-        # Pack text widget and scrollbar
-        text_widget.pack(side='left', fill='both', expand=True)
-        scrollbar.pack(side='right', fill='y')
+        # Bind mousewheel to canvas
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
         # Close button
         close_btn = tk.Button(
@@ -694,6 +838,252 @@ class AIvengersApp:
             pady=10
         )
         close_btn.pack(pady=20)
+
+        # Unbind mousewheel when popup closes
+        def on_close():
+            canvas.unbind_all("<MouseWheel>")
+            popup.destroy()
+        close_btn.config(command=on_close)
+
+    def parse_ai_reason(self, ai_reason):
+        """Parse AI reason text into structured sections"""
+        sections = {
+            'strengths': [],
+            'weaknesses': [],
+            'summary': '',
+            'raw_text': ai_reason
+        }
+
+        # Try different parsing strategies based on content structure
+
+        # Strategy 1: Look for new structured format "دلایل گرفتن امتیاز" and "دلایل نگرفتن امتیاز"
+        if 'دلایل گرفتن امتیاز:' in ai_reason and 'دلایل نگرفتن امتیاز:' in ai_reason:
+            parts = ai_reason.split('دلایل گرفتن امتیاز:', 1)
+            if len(parts) > 1:
+                remaining = parts[1]
+                if 'دلایل نگرفتن امتیاز:' in remaining:
+                    strengths_text = remaining.split(
+                        'دلایل نگرفتن امتیاز:', 1)[0].strip()
+                    # Split by sentences or bullet points
+                    strengths_list = [s.strip() for s in strengths_text.replace(
+                        '•', '\n').split('\n') if s.strip()]
+                    sections['strengths'] = [
+                        s for s in strengths_list if len(s) > 5]
+
+                    weakness_text = remaining.split(
+                        'دلایل نگرفتن امتیاز:', 1)[1].strip()
+                    # Split by sentences or bullet points
+                    weaknesses_list = [s.strip() for s in weakness_text.replace(
+                        '•', '\n').split('\n') if s.strip()]
+                    sections['weaknesses'] = [
+                        s for s in weaknesses_list if len(s) > 5]
+
+        # Strategy 2: Look for "نقاط قوت:" pattern
+        elif 'نقاط قوت:' in ai_reason:
+            parts = ai_reason.split('نقاط قوت:', 1)
+            if len(parts) > 1:
+                remaining = parts[1]
+                if 'فاصله' in remaining or 'کاستی' in remaining or 'نقاط ضعف' in remaining:
+                    # Extract strengths
+                    strength_end = remaining.find('فاصله') if 'فاصله' in remaining else remaining.find(
+                        'کاستی') if 'کاستی' in remaining else remaining.find('نقاط ضعف')
+                    if strength_end > 0:
+                        strengths_text = remaining[:strength_end].strip()
+                        sections['strengths'] = [s.strip()
+                                                 for s in strengths_text.split('،') if s.strip()]
+                        remaining = remaining[strength_end:]
+
+                # Extract weaknesses
+                if 'فاصله' in remaining or 'کاستی' in remaining or 'نقاط ضعف' in remaining:
+                    weakness_start = remaining.find('فاصله') if 'فاصله' in remaining else remaining.find(
+                        'کاستی') if 'کاستی' in remaining else remaining.find('نقاط ضعف')
+                    if weakness_start >= 0:
+                        weakness_text = remaining[weakness_start:].strip()
+                        if 'جمع‌بندی' in weakness_text:
+                            weakness_end = weakness_text.find('جمع‌بندی')
+                            sections['weaknesses'] = [
+                                s.strip() for s in weakness_text[:weakness_end].split('،') if s.strip()]
+                            sections['summary'] = weakness_text[weakness_end:].strip()
+                        else:
+                            sections['weaknesses'] = [
+                                s.strip() for s in weakness_text.split('،') if s.strip()]
+
+        # Strategy 2: Look for "مزایا:" and "کاستی‌ها:" pattern
+        elif 'مزایا:' in ai_reason and 'کاستی‌ها:' in ai_reason:
+            parts = ai_reason.split('مزایا:', 1)
+            if len(parts) > 1:
+                remaining = parts[1]
+                if 'کاستی‌ها:' in remaining:
+                    strengths_text = remaining.split('کاستی‌ها:', 1)[0].strip()
+                    sections['strengths'] = [s.strip()
+                                             for s in strengths_text.split('،') if s.strip()]
+
+                    weakness_text = remaining.split('کاستی‌ها:', 1)[1].strip()
+                    if 'جمع‌بندی:' in weakness_text:
+                        weakness_end = weakness_text.find('جمع‌بندی:')
+                        sections['weaknesses'] = [
+                            s.strip() for s in weakness_text[:weakness_end].split('،') if s.strip()]
+                        sections['summary'] = weakness_text[weakness_end:].strip()
+                    else:
+                        sections['weaknesses'] = [s.strip()
+                                                  for s in weakness_text.split('،') if s.strip()]
+
+        # Strategy 3: Look for "نقاط قوت:" and "نقاط ضعف:" pattern
+        elif 'نقاط قوت:' in ai_reason and 'نقاط ضعف:' in ai_reason:
+            parts = ai_reason.split('نقاط قوت:', 1)
+            if len(parts) > 1:
+                remaining = parts[1]
+                if 'نقاط ضعف:' in remaining:
+                    strengths_text = remaining.split('نقاط ضعف:', 1)[0].strip()
+                    sections['strengths'] = [s.strip()
+                                             for s in strengths_text.split('،') if s.strip()]
+
+                    weakness_text = remaining.split('نقاط ضعف:', 1)[1].strip()
+                    if 'جمع‌بندی:' in weakness_text:
+                        weakness_end = weakness_text.find('جمع‌بندی:')
+                        sections['weaknesses'] = [
+                            s.strip() for s in weakness_text[:weakness_end].split('،') if s.strip()]
+                        sections['summary'] = weakness_text[weakness_end:].strip()
+                    else:
+                        sections['weaknesses'] = [s.strip()
+                                                  for s in weakness_text.split('،') if s.strip()]
+
+        # Strategy 4: If no structured format found, treat as raw text
+        else:
+            # Try to split by common separators
+            if ':' in ai_reason and ('تجربه' in ai_reason or 'مزایا' in ai_reason or 'نقاط' in ai_reason):
+                # Try to extract meaningful parts
+                lines = ai_reason.split('.')
+                for line in lines:
+                    line = line.strip()
+                    if line and len(line) > 10:  # Only meaningful lines
+                        if any(word in line for word in ['تجربه', 'مزایا', 'قوت', 'مثبت']):
+                            sections['strengths'].append(line)
+                        elif any(word in line for word in ['کاستی', 'ضعف', 'منفی', 'عدم']):
+                            sections['weaknesses'].append(line)
+                        else:
+                            sections['summary'] += line + '. '
+            else:
+                # If no structure at all, put everything in summary
+                sections['summary'] = ai_reason
+
+        return sections
+
+    def display_structured_analysis(self, parent, structured_content):
+        """Display structured AI analysis in the popup"""
+        # Strengths section
+        if structured_content['strengths']:
+            strengths_frame = tk.Frame(parent, bg=self.bg_color)
+            strengths_frame.pack(fill='x', padx=10, pady=5)
+
+            strengths_title = tk.Label(
+                strengths_frame,
+                text="دلایل گرفتن امتیاز:",
+                font=("Tahoma", 14, "bold"),
+                bg=self.bg_color,
+                fg=self.green_color
+            )
+            strengths_title.pack(anchor='e')
+
+            for i, strength in enumerate(structured_content['strengths'], 1):
+                strength_label = tk.Label(
+                    strengths_frame,
+                    text=f"• {strength}",
+                    font=("Tahoma", 11),
+                    bg=self.bg_color,
+                    fg=self.white_color,
+                    wraplength=800,
+                    justify='right'
+                )
+                strength_label.pack(anchor='e', padx=20, pady=2)
+
+        # Weaknesses section
+        if structured_content['weaknesses']:
+            weaknesses_frame = tk.Frame(parent, bg=self.bg_color)
+            weaknesses_frame.pack(fill='x', padx=10, pady=5)
+
+            weaknesses_title = tk.Label(
+                weaknesses_frame,
+                text="دلایل نگرفتن امتیاز:",
+                font=("Tahoma", 14, "bold"),
+                bg=self.bg_color,
+                fg=self.red_color
+            )
+            weaknesses_title.pack(anchor='e')
+
+            for i, weakness in enumerate(structured_content['weaknesses'], 1):
+                weakness_label = tk.Label(
+                    weaknesses_frame,
+                    text=f"• {weakness}",
+                    font=("Tahoma", 11),
+                    bg=self.bg_color,
+                    fg=self.white_color,
+                    wraplength=800,
+                    justify='right'
+                )
+                weakness_label.pack(anchor='e', padx=20, pady=2)
+
+        # Summary section
+        if structured_content['summary']:
+            summary_frame = tk.Frame(parent, bg=self.bg_color)
+            summary_frame.pack(fill='x', padx=10, pady=5)
+
+            summary_title = tk.Label(
+                summary_frame,
+                text="خلاصه:",
+                font=("Tahoma", 14, "bold"),
+                bg=self.bg_color,
+                fg=self.yellow_color
+            )
+            summary_title.pack(anchor='e')
+
+            summary_label = tk.Label(
+                summary_frame,
+                text=structured_content['summary'],
+                font=("Tahoma", 11),
+                bg=self.bg_color,
+                fg=self.white_color,
+                wraplength=800,
+                justify='right'
+            )
+            summary_label.pack(anchor='e', padx=20, pady=2)
+
+        # If no structured content found, show raw text
+        elif not structured_content['strengths'] and not structured_content['weaknesses'] and structured_content['raw_text']:
+            raw_frame = tk.Frame(parent, bg=self.bg_color)
+            raw_frame.pack(fill='x', padx=10, pady=5)
+
+            raw_title = tk.Label(
+                raw_frame,
+                text="تحلیل AI:",
+                font=("Tahoma", 14, "bold"),
+                bg=self.bg_color,
+                fg=self.green_color
+            )
+            raw_title.pack(anchor='e')
+
+            # Create a text widget for better formatting of long text
+            text_widget = tk.Text(
+                raw_frame,
+                font=("Tahoma", 11),
+                bg=self.bg_color,
+                fg=self.white_color,
+                wrap='word',
+                width=80,
+                height=15,
+                relief='flat',
+                borderwidth=0
+            )
+            text_widget.pack(anchor='w', padx=20, pady=2,
+                             fill='both', expand=True)
+
+            # Insert the raw text
+            text_widget.insert('1.0', structured_content['raw_text'])
+            text_widget.configure(state='disabled')  # Make it read-only
+
+            # Configure for RTL text
+            text_widget.tag_configure("rtl", justify='right')
+            text_widget.tag_add("rtl", "1.0", "end")
 
     def set_processing_state(self, card, is_processing, is_done=False, is_warning=False):
         if is_processing:
@@ -871,38 +1261,30 @@ class AIvengersApp:
 
                 if event_type == 'progress':
                     self.update_progress(card, message)
-                    self.results_text.insert(tk.END, message + "\n")
-                    self.results_text.see(tk.END)
+                    # No need to insert to results_text since we use treeview now
                 elif event_type == 'progress_with_bar':
                     message, percentage = message  # Unpack the tuple
-                    self.results_text.insert(
-                        tk.END, f"DEBUG: progress_with_bar triggered - {message} - {percentage}%\n")
-                    self.results_text.see(tk.END)
                     self.update_progress_with_bar(card, message, percentage)
                 elif event_type == 'success':
                     self.set_processing_state(card, False, True)
                     self.update_progress(card, "Completed successfully!")
                     card.progress_bar.pack_forget()  # Hide progress bar
-                    self.results_text.insert(tk.END, f"\n{message}\n")
-                    self.results_text.see(tk.END)
+                    # No need to insert to results_text since we use treeview now
                 elif event_type == 'warning':
                     self.set_processing_state(card, False, False, True)
                     self.update_progress(card, f"Warning: {message}")
                     card.progress_bar.pack_forget()  # Hide progress bar
-                    self.results_text.insert(tk.END, f"\nWarning: {message}\n")
-                    self.results_text.see(tk.END)
+                    # No need to insert to results_text since we use treeview now
                 elif event_type == 'timeout':
                     self.set_processing_state(card, False, False, True)
                     self.update_progress(card, f"Timeout: {message}")
                     card.progress_bar.pack_forget()  # Hide progress bar
-                    self.results_text.insert(tk.END, f"\nTimeout: {message}\n")
-                    self.results_text.see(tk.END)
+                    # No need to insert to results_text since we use treeview now
                 elif event_type == 'error':
                     self.set_processing_state(card, False, False)
                     self.update_progress(card, f"Error: {message}")
                     card.progress_bar.pack_forget()  # Hide progress bar
-                    self.results_text.insert(tk.END, f"\nError: {message}\n")
-                    self.results_text.see(tk.END)
+                    # No need to insert to results_text since we use treeview now
 
         except queue.Empty:
             pass
@@ -967,7 +1349,6 @@ class AIvengersApp:
 
     def display_ranking_results(self):
         try:
-            print("DEBUG: display_ranking_results called")
             # Load ranking results from CSV
             results = []
             with open("out/final_results.csv", "r", encoding="utf-8") as f:
@@ -980,19 +1361,13 @@ class AIvengersApp:
                             score = float(parts[1]) if parts[1] else 0.0
                             results.append(
                                 {"filename": filename, "score": score})
-                            print(
-                                f"DEBUG: Loaded result - {filename}: {score}")
 
-            print(f"DEBUG: Total results loaded: {len(results)}")
             # Sort by score (already sorted in CSV, but just to be sure)
             results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
             # Clear previous results
             for item in self.results_tree.get_children():
                 self.results_tree.delete(item)
-
-            print(
-                f"DEBUG: Treeview children after clear: {len(self.results_tree.get_children())}")
 
             # Add results to table with enhanced styling
             for i, result in enumerate(results, 1):
@@ -1020,21 +1395,14 @@ class AIvengersApp:
                 # Details icon
                 details_icon = "👁️"
 
-                print(f"DEBUG: Inserting into table - {display_name}: {score}")
                 # Insert into table
                 item_id = self.results_tree.insert('', 'end', values=(
                     styled_name,
                     styled_score,
                     details_icon
                 ))
-                print(f"DEBUG: Inserted item with ID: {item_id}")
-
-            print(
-                f"DEBUG: Treeview children after insert: {len(self.results_tree.get_children())}")
-            print("DEBUG: Results display completed")
 
         except Exception as e:
-            print(f"DEBUG: Error in display_ranking_results: {str(e)}")
             messagebox.showerror("Error", f"Error loading results: {str(e)}")
 
 
